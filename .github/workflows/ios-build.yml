@@ -1,0 +1,57 @@
+# Builds the iOS companion app as an unsigned .ipa for sideloading
+# (Sideloadly / AltStore re-sign it with your Apple ID). No Mac needed locally.
+name: iOS companion (.ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-build.yml"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deployment target is iOS 26, which needs the Xcode 26 SDK
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build (unsigned)
+        working-directory: ios-app
+        run: |
+          xcodebuild \
+            -project AncsBridge.xcodeproj \
+            -target AncsBridge \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      # Ad-hoc sign with the entitlements so the re-signing tool knows the app
+      # needs HealthKit and requests it in the provisioning profile.
+      - name: Package .ipa
+        working-directory: ios-app
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/AncsBridge.app Payload/
+          codesign --force --sign - \
+            --entitlements AncsBridge/AncsBridge.entitlements \
+            Payload/AncsBridge.app
+          codesign -d --entitlements - Payload/AncsBridge.app
+          zip -qry WearBridge.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WearBridge-ipa
+          path: ios-app/WearBridge.ipa
+          retention-days: 30

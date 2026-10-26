@@ -105,6 +105,17 @@ Open `ios-app/AncsBridge.xcodeproj` in Xcode and build. The companion app provid
 3. Keep the companion app running in the background; data syncs every 15 minutes while the iPhone is unlocked
 4. Record workouts with the **Workout** button in WearBridge on the watch (Samsung Health workouts are not accessible to third-party apps)
 
+### Installing the iOS App Without a Mac
+
+The `iOS companion (.ipa)` GitHub Actions workflow builds an unsigned `WearBridge.ipa` on a macOS runner:
+
+1. Fork this repo, open **Actions** → **iOS companion (.ipa)** → **Run workflow**
+2. When it finishes, download the `WearBridge-ipa` artifact and unzip it
+3. Install [Sideloadly](https://sideloadly.io) on Windows (requires iTunes and iCloud from apple.com, not the Microsoft Store), connect the iPhone by cable and drag `WearBridge.ipa` in
+4. Sign in with your Apple ID, then on the iPhone trust the profile: Settings → General → VPN & Device Management; enable Developer Mode if asked (Settings → Privacy & Security)
+
+With a free Apple ID the app expires after 7 days — re-sideload or enable Sideloadly's auto-refresh. Requires iOS 26.
+
 Protocol: companion characteristics `A0E3D5B5-…` (health batches, write) and `A0E3D5B6-…` (ack, notify). See `wearos-app/.../health/HealthProtocol.kt`.
 
 ## Supported Apps
