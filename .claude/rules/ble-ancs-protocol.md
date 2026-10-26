@@ -64,6 +64,15 @@ When a call is answered on the iPhone, the watch overlay transitions from "Incom
 | Connection Status | `A0E3D5B2-4C6F-4E8A-9B2D-7F1E3A5C8D0B` | Read/Notify — watch reads to signal connection |
 | Quick Reply | `A0E3D5B3-4C6F-4E8A-9B2D-7F1E3A5C8D0B` | Write — watch sends `"callerName\|replyText"` |
 | Call State | `A0E3D5B4-4C6F-4E8A-9B2D-7F1E3A5C8D0B` | Read/Notify — iPhone pushes call state (0x00=idle, 0x01=ringing, 0x02=active, 0x03=ended) |
+| Health Data | `A0E3D5B5-4C6F-4E8A-9B2D-7F1E3A5C8D0B` | Write — watch sends health record batches (`HealthProtocol.kt`) |
+| Health Ack | `A0E3D5B6-4C6F-4E8A-9B2D-7F1E3A5C8D0B` | Notify — `[batchId u16][0x00 saved / 0x01 retry]` after HealthKit save |
+
+## Health Data Bridge
+
+1. `PassiveHealthService` (Health Services passive listener) buffers steps/distance/floors/HR/sleep in Room; `WorkoutManager` records workouts via ExerciseClient
+2. `HealthSyncManager` (in AncsService) sends unsynced batches every 15 min, after connect, and after a workout
+3. iOS writes to HealthKit, then notifies the ack — records are marked synced only on a "saved" ack (HealthKit is locked while the iPhone is locked)
+4. Health writes wait for 2s of Control Point silence; Control Point writes retry once on GATT busy
 
 ## Quick Reply Flow
 
