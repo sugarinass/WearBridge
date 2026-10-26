@@ -8,6 +8,8 @@ class SettingsStore: ObservableObject {
         static let autoAdvertise = "autoAdvertise"
         static let pairedDevices = "pairedDevices"
         static let liveCallStatus = "liveCallStatus"
+        static let appleHealthSync = "appleHealthSync"
+        static let lastHealthSync = "lastHealthSync"
     }
 
     @Published var autoAdvertise: Bool {
@@ -21,7 +23,19 @@ class SettingsStore: ObservableObject {
         didSet { defaults.set(liveCallStatus, forKey: Keys.liveCallStatus) }
     }
 
+    /// When enabled, health batches from the watch are written to Apple Health.
+    /// Off by default — turning it on requests HealthKit authorization.
+    @Published var appleHealthSync: Bool {
+        didSet { defaults.set(appleHealthSync, forKey: Keys.appleHealthSync) }
+    }
+
+    @Published var lastHealthSync: Date? {
+        didSet { defaults.set(lastHealthSync, forKey: Keys.lastHealthSync) }
+    }
+
     init() {
+        self.appleHealthSync = defaults.bool(forKey: Keys.appleHealthSync)
+        self.lastHealthSync = defaults.object(forKey: Keys.lastHealthSync) as? Date
         self.autoAdvertise = defaults.bool(forKey: Keys.autoAdvertise)
         self.liveCallStatus = defaults.bool(forKey: Keys.liveCallStatus)
         // Default to false — discoverability only via Add New Watch flow

@@ -17,6 +17,8 @@ import com.wearos.ancsbridge.ble.AncsConstants
 import com.wearos.ancsbridge.ble.BleConnectionManager
 import com.wearos.ancsbridge.ble.BleScanner
 import com.wearos.ancsbridge.ble.BondStateReceiver
+import com.wearos.ancsbridge.health.HealthSyncManager
+import com.wearos.ancsbridge.health.PassiveHealthService
 import com.wearos.ancsbridge.model.AncsEvent
 import com.wearos.ancsbridge.model.AncsNotification
 import com.wearos.ancsbridge.model.ConnectionState
@@ -72,6 +74,7 @@ class AncsService : Service() {
     private lateinit var scanner: BleScanner
     private lateinit var notificationManager: NotificationManager
     private lateinit var vibrator: Vibrator
+    private lateinit var healthSyncManager: HealthSyncManager
 
     private val dataSourceAssembler = DataSourceAssembler()
     private val appNameCache = mutableMapOf<String, String>()
@@ -157,6 +160,10 @@ class AncsService : Service() {
 
         // Start the attribute request processor
         startRequestProcessor()
+
+        // Health Data Bridge — buffered records → iPhone companion → HealthKit
+        healthSyncManager = HealthSyncManager(this, connectionManager, scope)
+        healthSyncManager.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -164,6 +171,8 @@ class AncsService : Service() {
             ACTION_START, null -> {
                 // Try to reconnect to bonded iPhone
                 tryReconnectBonded()
+                // Passive health registrations don't survive reboot — refresh on every start
+                scope.launch { PassiveHealthService.register(this@AncsService) }
             }
             ACTION_CONNECT -> {
                 val address = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
@@ -408,7 +417,12 @@ class AncsService : Service() {
             hasNegativeAction = event.hasNegativeAction
         )
 
-        val success = connectionManager.writeControlPoint(cpData)
+        var success = connectionManager.writeControlPoint(cpData)
+        if (!success) {
+            // GATT may be briefly busy (e.g. a health sync write) — retry once
+            kotlinx.coroutines.delay(300)
+            success = connectionManager.writeControlPoint(cpData)
+        }
         if (!success) {
             Log.e(TAG, "Failed to write Control Point for uid=${event.notificationUid}")
             dataSourceAssembler.reset()

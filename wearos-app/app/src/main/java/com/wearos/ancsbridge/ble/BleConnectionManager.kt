@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.util.Log
 import com.wearos.ancsbridge.model.ConnectionState
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedList
 
 /**
@@ -52,6 +54,18 @@ class BleConnectionManager(private val context: Context) {
 
     private val _callStateEvents = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
     val callStateEvents: SharedFlow<ByteArray> = _callStateEvents.asSharedFlow()
+
+    private val _healthAckEvents = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
+    val healthAckEvents: SharedFlow<ByteArray> = _healthAckEvents.asSharedFlow()
+
+    /** Negotiated ATT MTU (23 until onMtuChanged reports otherwise). */
+    @Volatile var mtu: Int = 23
+        private set
+
+    // Pending health batch write — completed from onCharacteristicWrite
+    private var healthWriteResult: CompletableDeferred<Boolean>? = null
+    private var healthAckSubscribed = false
+    @Volatile private var lastControlPointWriteMs = 0L
 
     private var gatt: BluetoothGatt? = null
     private var targetDevice: BluetoothDevice? = null
@@ -95,6 +109,9 @@ class BleConnectionManager(private val context: Context) {
         },
         onDisconnected = { gatt, status ->
             Log.i(TAG, "Disconnected, status=$status")
+            healthWriteResult?.complete(false)
+            healthWriteResult = null
+            mtu = 23
             _connectionState.value = ConnectionState.Disconnected()
             clearCharacteristics()
             gatt.close()
@@ -151,6 +168,7 @@ class BleConnectionManager(private val context: Context) {
             if (notificationSourceChar != null && dataSourceChar != null) {
                 Log.i(TAG, "ANCS already subscribed, checking companion service")
                 readCompanionStatus()
+                subscribeToHealthAck()
                 return@GattCallback
             }
 
@@ -200,6 +218,7 @@ class BleConnectionManager(private val context: Context) {
                     scope.launch {
                         delay(500) // Small delay to avoid GATT queue congestion
                         subscribeToCallState()
+                        subscribeToHealthAck()
                     }
                 }
             }
@@ -211,9 +230,14 @@ class BleConnectionManager(private val context: Context) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.e(TAG, "Characteristic write failed: $status for ${characteristic.uuid}")
             }
+            if (characteristic.uuid == AncsConstants.HEALTH_DATA_CHARACTERISTIC_UUID) {
+                healthWriteResult?.complete(status == BluetoothGatt.GATT_SUCCESS)
+                healthWriteResult = null
+            }
         },
         onMtuChanged = { mtu, status ->
             Log.i(TAG, "MTU negotiated: $mtu (status=$status)")
+            if (status == BluetoothGatt.GATT_SUCCESS) this.mtu = mtu
             // After MTU negotiation, discover services
             gatt?.discoverServices()
         },
@@ -222,6 +246,9 @@ class BleConnectionManager(private val context: Context) {
         },
         onCallStateChanged = { data ->
             _callStateEvents.tryEmit(data)
+        },
+        onHealthAckChanged = { data ->
+            _healthAckEvents.tryEmit(data)
         }
     )
 
@@ -290,6 +317,7 @@ class BleConnectionManager(private val context: Context) {
 
         char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         char.value = data
+        lastControlPointWriteMs = System.currentTimeMillis()
         return gatt.writeCharacteristic(char)
     }
 
@@ -424,6 +452,67 @@ class BleConnectionManager(private val context: Context) {
         Log.i(TAG, "writeQuickReply: wrote ${data.size} bytes, success=$success")
     }
 
+    private fun healthDataCharacteristic(): BluetoothGattCharacteristic? =
+        gatt?.getService(AncsConstants.COMPANION_SERVICE_UUID)
+            ?.getCharacteristic(AncsConstants.HEALTH_DATA_CHARACTERISTIC_UUID)
+
+    /** True when the iPhone companion app exposes the health bridge characteristics. */
+    fun isHealthBridgeAvailable(): Boolean = healthDataCharacteristic() != null && healthAckSubscribed
+
+    /**
+     * Subscribe to health ack notifications from the iOS companion app.
+     * Acks arrive after the iPhone has written a batch to HealthKit.
+     */
+    fun subscribeToHealthAck() {
+        if (healthAckSubscribed) return
+        val char = gatt?.getService(AncsConstants.COMPANION_SERVICE_UUID)
+            ?.getCharacteristic(AncsConstants.HEALTH_ACK_CHARACTERISTIC_UUID) ?: run {
+            Log.d(TAG, "subscribeToHealthAck: health ack characteristic not found")
+            return
+        }
+        healthAckSubscribed = true
+        subscribeToCharacteristic(char)
+        Log.i(TAG, "Subscribing to health ack characteristic")
+    }
+
+    /**
+     * Re-run service discovery so a companion service registered after we
+     * connected (iPhone app opened later) becomes visible. ANCS is not
+     * re-subscribed — see the guard in onServicesDiscoveredCallback.
+     */
+    fun refreshServices() {
+        if (_connectionState.value !is ConnectionState.Connected) return
+        gatt?.discoverServices()
+    }
+
+    /**
+     * Write one health batch and wait for the GATT write response.
+     * Waits for the link to be quiet first so ANCS Control Point requests
+     * (which are fire-and-forget) don't collide with this write.
+     */
+    suspend fun writeHealthBatch(data: ByteArray): Boolean {
+        var waits = 0
+        while (waits++ < 20 &&
+            (System.currentTimeMillis() - lastControlPointWriteMs < 2_000 || isWritingDescriptor)) {
+            delay(500)
+        }
+        val gatt = this.gatt ?: return false
+        val char = healthDataCharacteristic() ?: return false
+
+        val result = CompletableDeferred<Boolean>()
+        healthWriteResult = result
+        char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        char.value = data
+        if (!gatt.writeCharacteristic(char)) {
+            healthWriteResult = null
+            Log.w(TAG, "writeHealthBatch: GATT busy")
+            return false
+        }
+        val ok = withTimeoutOrNull(10_000) { result.await() } ?: false
+        if (healthWriteResult === result) healthWriteResult = null
+        return ok
+    }
+
     fun disconnect() {
         autoReconnect = false
         reconnectJob?.cancel()
@@ -496,6 +585,7 @@ class BleConnectionManager(private val context: Context) {
         dataSourceChar = null
         descriptorWriteQueue.clear()
         isWritingDescriptor = false
+        healthAckSubscribed = false
     }
 
     fun destroy() {

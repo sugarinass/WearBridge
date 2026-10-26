@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718293A4B03 /* HealthRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B01 /* HealthRecord.swift */; };
+		A1B2C3D4E5F60718293A4B04 /* HealthKitWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B02 /* HealthKitWriter.swift */; };
 		0C1339CAF49308EE12D67173 /* BLEViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B64A6B42E55DCF830BD9501 /* BLEViewModel.swift */; };
 		0D89D3ECFF7D0E5DF95C362D /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4027EE6B08DD2500C1BF6E94 /* BLEConstants.swift */; };
 		246322911A02C982C0331924 /* StatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076673E488AFB468ED2E2EF9 /* StatusView.swift */; };
@@ -37,6 +39,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F60718293A4B01 /* HealthRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthRecord.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B02 /* HealthKitWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitWriter.swift; sourceTree = "<group>"; };
 		03B56BE4BCAB856A9AFE50DB /* HowItWorksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowItWorksView.swift; sourceTree = "<group>"; };
 		076673E488AFB468ED2E2EF9 /* StatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusView.swift; sourceTree = "<group>"; };
 		0C4E6DA939E59F8521934572 /* QuickReplySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickReplySettingsView.swift; sourceTree = "<group>"; };
@@ -61,6 +65,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		A1B2C3D4E5F60718293A4B05 /* Health */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A4B02 /* HealthKitWriter.swift */,
+				A1B2C3D4E5F60718293A4B01 /* HealthRecord.swift */,
+			);
+			path = Health;
+			sourceTree = "<group>";
+		};
 		12327BD4CA00F54E1445A6CF /* AncsBridge */ = {
 			isa = PBXGroup;
 			children = (
@@ -69,6 +82,7 @@
 				77C36C2AFA8EA8C56AF8471D /* Assets.xcassets */,
 				523A43621478CD12C73CC964 /* Info-Generated.plist */,
 				E33384D451D23D1FDBB2AC6A /* BLE */,
+				A1B2C3D4E5F60718293A4B05 /* Health */,
 				78951DEE32131D8A9C313205 /* Model */,
 				7CA157A73FDAF87BC06EFF4C /* Storage */,
 				E49B8E71FFD2920FFE74832C /* ViewModels */,
@@ -245,6 +259,8 @@
 				4181448E736418ED1E58AEFC /* AddWatchView.swift in Sources */,
 				9B3BB8D8B67A12F25A4D6F26 /* AncsBridgeApp.swift in Sources */,
 				0D89D3ECFF7D0E5DF95C362D /* BLEConstants.swift in Sources */,
+				A1B2C3D4E5F60718293A4B04 /* HealthKitWriter.swift in Sources */,
+				A1B2C3D4E5F60718293A4B03 /* HealthRecord.swift in Sources */,
 				0C1339CAF49308EE12D67173 /* BLEViewModel.swift in Sources */,
 				3444128F7B515916482238DB /* CallStateObserver.swift in Sources */,
 				BAF4F26B9E9AC17651F796F1 /* ConnectionState.swift in Sources */,

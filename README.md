@@ -30,6 +30,7 @@ iPhone (iOS 26)                       Wear OS Watch
 - **Boot persistence** — service auto-starts on watch reboot
 - **Haptic feedback** — category-aware vibration patterns via direct Vibrator API (50ms for messages, double-tap for calls)
 - **No cloud dependency** — everything runs over local BLE
+- **Apple Health sync** — steps, distance, floors, heart rate, sleep and workouts recorded on the watch are buffered and written to HealthKit by the iOS companion app
 - **iOS companion app** — single-screen status UI with auto-detection of connected watches, "How it Works" explainer, and iOS 26 icon theming
 
 ## Tested Hardware
@@ -97,6 +98,15 @@ Open `ios-app/AncsBridge.xcodeproj` in Xcode and build. The companion app provid
 4. Accept the Bluetooth pairing dialog on the iPhone
 5. Notifications will start mirroring automatically
 
+### Apple Health Sync (optional)
+
+1. On the watch, allow Physical activity and Body sensors (choose "Allow all the time" for background heart rate)
+2. On the iPhone, open WearBridge → Settings → enable **Apple Health Sync** and grant Health access
+3. Keep the companion app running in the background; data syncs every 15 minutes while the iPhone is unlocked
+4. Record workouts with the **Workout** button in WearBridge on the watch (Samsung Health workouts are not accessible to third-party apps)
+
+Protocol: companion characteristics `A0E3D5B5-…` (health batches, write) and `A0E3D5B6-…` (ack, notify). See `wearos-app/.../health/HealthProtocol.kt`.
+
 ## Supported Apps
 
 75+ iOS apps are mapped with custom icons, including:
@@ -115,7 +125,7 @@ Unknown apps fall back to category-based icons (phone for calls, envelope for em
 - [ ] **Quick Reply BLE Transport** — Wire decline-with-message text to iOS companion app via custom BLE characteristic
 - [ ] **App Icon Support** — Expand to full-color Play Store PNGs as `largeIcon`
 - [ ] **Multi-Device Pairing** — Support switching between multiple Wear OS watches
-- [ ] **Health Data Bridge** — Transfer Wear OS health/fitness data to iPhone via BLE + HealthKit
+- [x] **Health Data Bridge** — Transfer Wear OS health/fitness data to iPhone via BLE + HealthKit
 
 ## Contributing
 

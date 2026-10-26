@@ -45,8 +45,14 @@ import com.wearos.ancsbridge.viewmodel.MainViewModel
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     var showPairScreen by remember { mutableStateOf(false) }
+    var showWorkoutScreen by remember { mutableStateOf(false) }
 
-    if (showPairScreen) {
+    if (showWorkoutScreen) {
+        WorkoutScreen(
+            viewModel = viewModel,
+            onDismiss = { showWorkoutScreen = false }
+        )
+    } else if (showPairScreen) {
         PairNewDeviceScreen(
             viewModel = viewModel,
             onDismiss = { showPairScreen = false }
@@ -54,14 +60,15 @@ fun MainScreen(viewModel: MainViewModel) {
     } else {
         HomeScreen(
             viewModel = viewModel,
-            onPairNewDevice = { showPairScreen = true }
+            onPairNewDevice = { showPairScreen = true },
+            onOpenWorkout = { showWorkoutScreen = true }
         )
     }
 }
 
 @SuppressLint("MissingPermission")
 @Composable
-fun HomeScreen(viewModel: MainViewModel, onPairNewDevice: () -> Unit) {
+fun HomeScreen(viewModel: MainViewModel, onPairNewDevice: () -> Unit, onOpenWorkout: () -> Unit) {
     val connectionState by viewModel.connectionState.collectAsState()
 
     ScalingLazyColumn(
@@ -145,6 +152,10 @@ fun HomeScreen(viewModel: MainViewModel, onPairNewDevice: () -> Unit) {
 
                 item { Spacer(modifier = Modifier.height(4.dp)) }
 
+                item { HealthCard(viewModel = viewModel, onOpenWorkout = onOpenWorkout) }
+
+                item { Spacer(modifier = Modifier.height(4.dp)) }
+
                 // Disconnect
                 item {
                     Button(
@@ -218,6 +229,11 @@ fun HomeScreen(viewModel: MainViewModel, onPairNewDevice: () -> Unit) {
                             Text("Reconnect", fontSize = 12.sp)
                         }
                     }
+
+                    item { Spacer(modifier = Modifier.height(4.dp)) }
+
+                    // Workouts are buffered on the watch and synced on reconnect
+                    item { HealthCard(viewModel = viewModel, onOpenWorkout = onOpenWorkout) }
 
                     item { Spacer(modifier = Modifier.height(4.dp)) }
                 } else {

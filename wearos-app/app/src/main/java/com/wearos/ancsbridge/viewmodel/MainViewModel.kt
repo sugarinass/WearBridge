@@ -12,10 +12,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wearos.ancsbridge.ancs.AncsService
 import com.wearos.ancsbridge.ble.BleScanner
+import com.wearos.ancsbridge.health.HealthDatabase
+import com.wearos.ancsbridge.health.HealthSyncManager
+import com.wearos.ancsbridge.health.WorkoutManager
 import com.wearos.ancsbridge.model.ConnectionState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -35,6 +40,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val scanStatus: StateFlow<String> = _scanStatus.asStateFlow()
 
     private var scanJob: Job? = null
+
+    // Health Data Bridge
+    val workoutState: StateFlow<WorkoutManager.WorkoutState> = WorkoutManager.state
+    val lastHealthSyncMs: StateFlow<Long> = HealthSyncManager.lastSyncMs
+    val pendingHealthRecords: StateFlow<Int> = HealthDatabase.get(application).recordDao()
+        .unsyncedCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    private val _workoutError = MutableStateFlow<String?>(null)
+    val workoutError: StateFlow<String?> = _workoutError.asStateFlow()
+
+    fun startWorkout(activity: Int) {
+        viewModelScope.launch {
+            _workoutError.value = WorkoutManager.start(getApplication(), activity)
+        }
+    }
+
+    fun stopWorkout() {
+        viewModelScope.launch { WorkoutManager.stop() }
+    }
 
     val isBluetoothEnabled: Boolean get() = scanner.isBluetoothEnabled
 

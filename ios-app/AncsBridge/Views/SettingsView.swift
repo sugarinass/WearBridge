@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var viewModel: BLEViewModel
     @State private var liveCallStatusEnabled: Bool = false
+    @State private var appleHealthSyncEnabled: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,43 @@ struct SettingsView: View {
                     }
                 }
 
+                // Apple Health
+                Section {
+                    Toggle(isOn: $appleHealthSyncEnabled) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Apple Health Sync")
+                                Text("Save steps, heart rate, sleep and workouts from the watch to the Health app.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "heart.fill")
+                                .foregroundColor(.pink)
+                        }
+                    }
+                    .disabled(!HealthKitWriter.isAvailable)
+                    .onChange(of: appleHealthSyncEnabled) { newValue in
+                        viewModel.peripheralManager.settingsStore.appleHealthSync = newValue
+                        if newValue {
+                            Task { try? await viewModel.peripheralManager.healthWriter.requestAuthorization() }
+                        }
+                    }
+
+                    if let lastSync = viewModel.peripheralManager.settingsStore.lastHealthSync {
+                        HStack {
+                            Text("Last Sync")
+                            Spacer()
+                            Text(lastSync, style: .relative)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Health")
+                } footer: {
+                    Text("Data is buffered on the watch and sent when this app is running nearby and the iPhone is unlocked. Workouts must be recorded with the Workout button in WearBridge on the watch.")
+                }
+
                 // About
                 Section {
                     NavigationLink {
@@ -67,6 +105,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .onAppear {
                 liveCallStatusEnabled = viewModel.peripheralManager.settingsStore.liveCallStatus
+                appleHealthSyncEnabled = viewModel.peripheralManager.settingsStore.appleHealthSync
             }
         }
     }

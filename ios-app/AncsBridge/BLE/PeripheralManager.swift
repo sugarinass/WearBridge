@@ -27,11 +27,17 @@ class PeripheralManager: NSObject, ObservableObject {
     private var companionService: CBMutableService?
     private var statusCharacteristic: CBMutableCharacteristic?
     private var callStateCharacteristic: CBMutableCharacteristic?
+    private var healthAckCharacteristic: CBMutableCharacteristic?
+    /// Acks that couldn't be sent because the notify queue was full
+    private var pendingHealthAcks: [Data] = []
     private var serviceAdded = false
     private var scanTimer: Timer?
 
     /// Monitors phone call state via CallKit for live call status sync
     let callStateObserver = CallStateObserver()
+
+    /// Writes health batches from the watch into Apple Health
+    let healthWriter = HealthKitWriter()
 
     /// Standard BLE service UUIDs to probe for connected devices.
     /// Wear OS watches expose these standard GATT services.
@@ -253,7 +259,24 @@ class PeripheralManager: NSObject, ObservableObject {
             type: BLEConstants.companionServiceUUID,
             primary: true
         )
-        companionService?.characteristics = [statusCharacteristic!, quickReplyCharacteristic, callStateCharacteristic!]
+        let healthDataCharacteristic = CBMutableCharacteristic(
+            type: BLEConstants.healthDataCharacteristicUUID,
+            properties: [.write],
+            value: nil,
+            permissions: [.writeable]
+        )
+
+        healthAckCharacteristic = CBMutableCharacteristic(
+            type: BLEConstants.healthAckCharacteristicUUID,
+            properties: [.notify],
+            value: nil,
+            permissions: [.readable]
+        )
+
+        companionService?.characteristics = [
+            statusCharacteristic!, quickReplyCharacteristic, callStateCharacteristic!,
+            healthDataCharacteristic, healthAckCharacteristic!
+        ]
 
         peripheralManager.add(companionService!)
         serviceAdded = true
@@ -312,6 +335,14 @@ extension PeripheralManager: CBPeripheralManagerDelegate {
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        // Long writes arrive as several requests with offsets — reassemble health data
+        let healthRequests = requests
+            .filter { $0.characteristic.uuid == BLEConstants.healthDataCharacteristicUUID }
+            .sorted { $0.offset < $1.offset }
+        if !healthRequests.isEmpty {
+            handleHealthBatch(healthRequests.reduce(into: Data()) { $0.append($1.value ?? Data()) })
+        }
+
         for request in requests {
             if request.characteristic.uuid == BLEConstants.quickReplyCharacteristicUUID,
                let data = request.value,
@@ -320,6 +351,56 @@ extension PeripheralManager: CBPeripheralManagerDelegate {
                 handleQuickReply(payload)
             }
             peripheral.respond(to: request, withResult: .success)
+        }
+    }
+
+    func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        flushHealthAcks()
+    }
+
+    // MARK: - Health Data Bridge
+
+    /// The write is acknowledged at the GATT level immediately; the HealthKit
+    /// result goes back as a separate ack notification so the watch's GATT
+    /// queue isn't blocked while HealthKit saves.
+    private func handleHealthBatch(_ data: Data) {
+        guard let (batchId, records) = HealthRecord.parseBatch(data) else {
+            logger.error("Malformed health batch (\(data.count) bytes)")
+            return
+        }
+        guard settingsStore.appleHealthSync, HealthKitWriter.isAvailable else {
+            // Watch keeps the data until sync is turned on
+            sendHealthAck(batchId: batchId, saved: false)
+            return
+        }
+
+        Task {
+            do {
+                try await healthWriter.save(records)
+                DispatchQueue.main.async {
+                    self.settingsStore.lastHealthSync = Date()
+                    self.sendHealthAck(batchId: batchId, saved: true)
+                }
+            } catch {
+                // Typically errorDatabaseInaccessible while the iPhone is locked
+                logger.warning("HealthKit save failed, watch will retry: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.sendHealthAck(batchId: batchId, saved: false)
+                }
+            }
+        }
+    }
+
+    private func sendHealthAck(batchId: UInt16, saved: Bool) {
+        pendingHealthAcks.append(HealthRecord.ackPayload(batchId: batchId, saved: saved))
+        flushHealthAcks()
+    }
+
+    private func flushHealthAcks() {
+        guard let char = healthAckCharacteristic else { return }
+        while let ack = pendingHealthAcks.first {
+            guard peripheralManager.updateValue(ack, for: char, onSubscribedCentrals: nil) else { return }
+            pendingHealthAcks.removeFirst()
         }
     }
 
